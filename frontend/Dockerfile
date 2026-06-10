@@ -1,31 +1,36 @@
-# --- Etapa 1: Construcción ---
-FROM node:18-alpine AS build
-
+# --- Etapa 1: Compilación de la App (Usando Node 20) ---
+FROM node:20-alpine AS build
 WORKDIR /app
 
-# Copiar los archivos de configuración y dependencias
+# Copiar archivos de dependencias
 COPY package*.json ./
-
-# Instalar dependencias
 RUN npm install
 
-# Copiar el resto del código
+# Copiar el resto del código del frontend
 COPY . .
 
-# Compilar la aplicación de React (Vite crea la carpeta 'dist')
+# Compilar el proyecto (Vite generará la carpeta /app/dist)
 RUN npm run build
 
-# --- Etapa 2: Servidor Web (Nginx) ---
+
+# --- Etapa 2: Servidor de Producción (Nginx) ---
 FROM nginx:alpine
 
-# Copiar los archivos compilados de la etapa anterior a la carpeta de Nginx
+# Escribimos la configuración para forzar el puerto 8080 y evitar errores 404 en React
+RUN echo 'server { \
+    listen 8080; \
+    location / { \
+    root /usr/share/nginx/html; \
+    index index.html index.htm; \
+    try_files $uri $uri/ /index.html; \
+    } \
+    }' > /etc/nginx/conf.d/default.conf
+
+# Copiar los archivos compilados desde la etapa de Node
 COPY --from=build /app/dist /usr/share/nginx/html
 
-# Ajustar Nginx para que escuche en el puerto 8080 (el que usa Cloud Run)
-RUN sed -i 's/listen  (.*)80;/listen 8080;/' /etc/nginx/conf.d/default.conf
-
-# Exponer el puerto
+# Informar a Cloud Run del puerto
 EXPOSE 8080
 
-# Iniciar Nginx
+# Arrancar Nginx
 CMD ["nginx", "-g", "daemon off;"]
